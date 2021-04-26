@@ -3,6 +3,7 @@
 //
 
 #include "fluid_OpenMP.h"
+//#include <omp.h>
 
 const double fluidVolume = 1000 * MASS / REST_DENSITY;
 
@@ -10,6 +11,7 @@ Fluid::Fluid(void) {
     double particleDiameter = pow(fluidVolume, 1.0 / 3.0) / 10.0;
     double particleRadius = particleDiameter / 2.0;
 
+//    #pragma omp parallel for num_threads(2)
     for (double x = -particleRadius * 9; x <= particleRadius * 9; x += particleDiameter) {
         for (double y = -particleRadius * 9; y <= particleRadius * 9; y += particleDiameter) {
             for (double z = -particleRadius * 9; z <= particleRadius * 9; z += particleDiameter) {
