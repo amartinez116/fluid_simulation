@@ -1,0 +1,34 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/fluid.cpp
+fluid.hpp
+/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/fluid.hpp
+
+/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/fluid.hpp
+vector
+-
+math.h
+-
+particle.hpp
+/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/particle.hpp
+
+/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/particle.hpp
+GLUT/GLUT.h
+-
+GL/glut.h
+-
+utility.h
+/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/utility.h
+
+/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/utility.h
+iostream
+-
+cmath
+-
+
