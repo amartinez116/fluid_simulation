@@ -1,3 +1,0 @@
-/home/nkhera/Desktop/15418/fluid_simulation/SPH/build/CMakeFiles/rebuild_cache.dir
-/home/nkhera/Desktop/15418/fluid_simulation/SPH/build/CMakeFiles/edit_cache.dir
-/home/nkhera/Desktop/15418/fluid_simulation/SPH/build/CMakeFiles/SPH.dir
