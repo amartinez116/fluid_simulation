@@ -27,6 +27,7 @@
 
 
 class Fluid {
+public:
     Fluid( void );
 
     void draw( void );

@@ -1,18 +1,38 @@
 #include "fluid.hpp"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cassert>
+
+#include <iostream>
+#include <vector>
+#include <list>
 
 using namespace std;
 Fluid fluid;
 bool start = false;
 
 void displayCallback( void ) {
+    struct timespec before, after;
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     gluLookAt(0.2, 0.3, 0.6, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-    if (start)
+
+    if (start) {
+        clock_gettime(CLOCK_REALTIME, &before);
         fluid.simulate();
+        clock_gettime(CLOCK_REALTIME, &after);
+
+        double delta_ms = (double) (after.tv_sec - before.tv_sec) * 1000.0 + (after.tv_nsec - before.tv_nsec) / 1000000.0;
+        putchar('\n');
+        printf("============ Time ============\n");
+        printf("Time: %.3f ms (%.3f s)\n", delta_ms, delta_ms / 1000.0);
+    }
+
     fluid.draw();
 
     glMatrixMode(GL_PROJECTION);

@@ -1,15 +1,15 @@
-//
-// Created by Adriana Martinez on 4/26/21.
-//
-
 #include "fluid_OpenMP.h"
 #include <omp.h>
+#include <cstdio>
+#include <cstdlib>
 
 const double fluidVolume = 1000 * MASS / REST_DENSITY;
 
 Fluid::Fluid(void) {
     double particleDiameter = pow(fluidVolume, 1.0 / 3.0) / 10.0;
     double particleRadius = particleDiameter / 2.0;
+
+    printf("Starting openMP");
 
 //    #pragma omp parallel for num_threads(2)
     for (double x = -particleRadius * 9; x <= particleRadius * 9; x += particleDiameter) {
@@ -93,12 +93,14 @@ void Fluid::draw(void) {
 
 void Fluid::simulate(void) {
     // Compute density and pressure
+    #pragma omp parallel for schedule(static, OMP_CHUNK)
     for (int i = 0; i < mParticles.size(); i++) {
         mParticles[i].mDensity = calcDensity(mParticles[i].mPosition);
         mParticles[i].mPressure = calcPressure(mParticles[i].mDensity);
     }
 
     // Compute internal forces
+    #pragma omp parallel for schedule(static, OMP_CHUNK)
     for (int i = 0; i < mParticles.size(); i++) {
         mParticles[i].mPressureForce = calcPressureForce(i, mParticles[i].mDensity, mParticles[i].mPressure,
                                                          mParticles[i].mPosition);
@@ -106,6 +108,7 @@ void Fluid::simulate(void) {
     }
 
     // Compute external forces
+    #pragma omp parallel for schedule(static, OMP_CHUNK)
     for (int i = 0; i < mParticles.size(); i++) {
         mParticles[i].mGravitationalForce = calcGravitationalForce(mParticles[i].mDensity);
         mParticles[i].mSurfaceNormal = calcSurfaceNormal(mParticles[i].mPosition);
@@ -120,6 +123,7 @@ void Fluid::simulate(void) {
     static float time = 0.0f;
     time += TIME_STEP;
     Vector3f totalForce;
+    #pragma omp parallel for schedule(static, OMP_CHUNK)
     for (int i = 0; i < mParticles.size(); i++) {
         //totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce + mParticles[i].mSurfaceTensionForce;
         totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce + mParticles[i].mGravitationalForce +
