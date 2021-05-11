@@ -25,6 +25,9 @@ void displayCallback( void ) {
 void keyboardCallback( unsigned char key, int x, int y ) {
     if (key == 's') // Start to simulate
         start = true;
+
+    if (key == 'q')
+        exit(0);
 }
 
 void setLighting( void ) {

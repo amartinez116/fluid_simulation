@@ -3,7 +3,7 @@
 //
 
 #include "fluid_OpenMP.h"
-//#include <omp.h>
+#include <omp.h>
 
 const double fluidVolume = 1000 * MASS / REST_DENSITY;
 
