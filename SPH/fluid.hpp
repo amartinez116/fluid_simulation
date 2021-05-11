@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <math.h>
+#include <omp.h>
 #include "particle.hpp"
 
 #define REST_DENSITY               998.29f
@@ -19,14 +20,16 @@
 #define GRAVITATIONAL_ACCELERATION Vector3f(0.0f, -9.82f, 0.0f)
 
 #define TIME_STEP                  0.01f
-#define BOX_SIZE                   0.3f
+#define BOX_SIZE                   1.0f
 
 class Fluid {
 public:
     Fluid( void );
-
     void draw( void );
-    void simulate( void );
+
+    void simulate_seq( void );
+    void simulate_omp( void );
+    void simulate_cuda( void );
 
     float calcDensity( Vector3f );
     float calcPressure( float );

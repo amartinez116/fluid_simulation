@@ -1,15 +1,17 @@
-#include "fluid.hpp"
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <cassert>
+#include <cstring>
 
-#include <iostream>
-#include <vector>
-#include <list>
+#include "fluid.hpp"
 
 using namespace std;
+
+#define error_exit(fmt, ...) do { fprintf(stderr, "%s error: " fmt, __func__, ##__VA_ARGS__); exit(1); } while(0);
+
 Fluid fluid;
+int NCORES = 1;
+int INDEX = 0;
+
 bool start = false;
 
 void displayCallback( void ) {
@@ -24,7 +26,19 @@ void displayCallback( void ) {
 
     if (start) {
         clock_gettime(CLOCK_REALTIME, &before);
-        fluid.simulate();
+        
+        switch (INDEX) {
+            case 0: 
+                fluid.simulate_seq();
+                break;
+            case 1: 
+                fluid.simulate_omp();
+                break;
+            case 2: 
+                fluid.simulate_cuda();
+                break;
+        }
+
         clock_gettime(CLOCK_REALTIME, &after);
 
         double delta_ms = (double) (after.tv_sec - before.tv_sec) * 1000.0 + (after.tv_nsec - before.tv_nsec) / 1000000.0;
@@ -81,16 +95,38 @@ void display() {
 }
 
 int main( int argc, char *argv[] ) {
+    if (argc < 3 || strcmp(argv[1], "-v") != 0) {
+        error_exit("Expecting argument: -v [process type]\n");
+    }
+
+    INDEX = atoi(argv[2]);
+    if (INDEX > 2 || INDEX < 0) {
+        error_exit("Illegal process type: %d\n", INDEX);
+    }
+
+    if (argc == 5 && strcmp(argv[3], "-p") == 0) {
+        NCORES = atoi(argv[4]);
+    }
+
+    if (INDEX == 2 && NCORES < 1) {
+        error_exit("Illegal core count: %d\n", NCORES);
+    } else if (INDEX == 1 && NCORES < 1) {
+        error_exit("Illegal core count: %d\n", NCORES);
+    }
+
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
     glutInitWindowSize(1024, 768);
     glutCreateWindow("SPH Animation");
+
     glutDisplayFunc(displayCallback);
     glutIdleFunc(displayCallback);
     glutKeyboardFunc(keyboardCallback);
+
     glEnable(GL_DEPTH_TEST);
     glShadeModel(GL_SMOOTH);
     setLighting();
     glutMainLoop();
+
     return 0;
 }

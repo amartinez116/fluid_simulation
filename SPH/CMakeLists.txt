@@ -3,6 +3,7 @@ project(SPH)
 
 find_package(OpenGL REQUIRED)
 find_package(GLUT REQUIRED)
+find_package(OpenMP REQUIRED CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 
@@ -12,7 +13,7 @@ set(SOURCE_FILES main.cpp)
 add_executable(SPH main.cpp fluid.cpp particle.cpp utility.h)
 
 include_directories( ${OPENGL_INCLUDE_DIRS}  ${GLUT_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES} ${GLUT_LIBRARY})
+target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} OpenMP::OpenMP_CXX)
 
 if (APPLE)
     target_link_libraries(SPH "-framework OpenGL")

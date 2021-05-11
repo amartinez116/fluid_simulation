@@ -4,11 +4,11 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/fluid.cpp" "/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/build/CMakeFiles/SPH.dir/fluid.cpp.o"
-  "/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/main.cpp" "/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/build/CMakeFiles/SPH.dir/main.cpp.o"
-  "/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/particle.cpp" "/Users/adrianamartinez/Desktop/15418/15418/fluid_simulation/SPH/build/CMakeFiles/SPH.dir/particle.cpp.o"
+  "/home/nkhera/Desktop/15418/fluid_simulation/SPH/fluid.cpp" "/home/nkhera/Desktop/15418/fluid_simulation/SPH/build/CMakeFiles/SPH.dir/fluid.cpp.o"
+  "/home/nkhera/Desktop/15418/fluid_simulation/SPH/main.cpp" "/home/nkhera/Desktop/15418/fluid_simulation/SPH/build/CMakeFiles/SPH.dir/main.cpp.o"
+  "/home/nkhera/Desktop/15418/fluid_simulation/SPH/particle.cpp" "/home/nkhera/Desktop/15418/fluid_simulation/SPH/build/CMakeFiles/SPH.dir/particle.cpp.o"
   )
-set(CMAKE_CXX_COMPILER_ID "AppleClang")
+set(CMAKE_CXX_COMPILER_ID "GNU")
 
 # The include file search paths:
 set(CMAKE_CXX_TARGET_INCLUDE_PATH
