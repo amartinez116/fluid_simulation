@@ -148,7 +148,6 @@ void Fluid::simulate_seq(void) {
 void Fluid::simulate_cuda(void) {
   std::cout << "CUDA" << std::endl;
 
-  // Particle* resultParticles = new Particle[mParticles.size()];
   copyArrayToDevice((void *)cudaParticles, mParticles.data(),
                     mParticles.size() * sizeof(Particle));
 
@@ -159,19 +158,6 @@ void Fluid::simulate_cuda(void) {
 
   copyArrayFromDevice(mParticles.data(), (void *)cudaParticles,
                       mParticles.size() * sizeof(Particle));
-
-//   std::cout << mParticles.size() << std::endl;
-//   std::cout << mParticles[0].mDensity << std::endl;
-//   std::cout << mParticles[0].mPressure << std::endl;
-
-  // Compute internal forces
-  for (int i = 0; i < mParticles.size(); i++) {
-    mParticles[i].mPressureForce =
-        calcPressureForce(i, mParticles[i].mDensity, mParticles[i].mPressure,
-                          mParticles[i].mPosition);
-    mParticles[i].mViscosityForce =
-        calcViscosityForce(i, mParticles[i].mVelocity, mParticles[i].mPosition);
-  }
 
   // Compute external forces
   for (int i = 0; i < mParticles.size(); i++) {
