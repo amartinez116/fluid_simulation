@@ -4,6 +4,7 @@
 #define _FLUID_HPP_
 
 #include <vector>
+#include <cstdio>
 #include <math.h>
 #include <omp.h>
 #include "particle.hpp"
@@ -20,7 +21,7 @@
 #define GRAVITATIONAL_ACCELERATION Vector3f(0.0f, -9.82f, 0.0f)
 
 #define TIME_STEP                  0.01f
-#define BOX_SIZE                   1.0f
+#define BOX_SIZE                   0.5f
 
 class Fluid {
 public:
@@ -48,7 +49,8 @@ public:
     Vector3f usePressureKernel_gradient( Vector3f, float );
     float useViscosityKernel_laplacian( Vector3f, float );
 
-    vector<Particle> mParticles;
+    std::vector<Particle> mParticles;
+    Particle* cudaParticles;
 };
 
 #endif

@@ -11,6 +11,7 @@
 
 class Particle {
 public:
+    Particle();
     Particle( float, Vector3f );
 
     float mMass;

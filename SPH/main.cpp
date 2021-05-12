@@ -28,7 +28,8 @@ void displayCallback( void ) {
         clock_gettime(CLOCK_REALTIME, &before);
         
         switch (INDEX) {
-            case 0: 
+            case 0:
+                printf("in main.cpp");
                 fluid.simulate_seq();
                 break;
             case 1: 
@@ -51,7 +52,7 @@ void displayCallback( void ) {
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(60.0, 1024.0 / 768.0, 0.05, 100.0);
+    gluPerspective(110.0, 1024.0 / 768.0, 0.05, 100.0);
 
     glutSwapBuffers();
 }

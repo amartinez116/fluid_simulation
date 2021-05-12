@@ -1,12 +1,19 @@
 #include "fluid.hpp"
+#include "fluid_cuda.cuh"
+
+#include <cuda_runtime.h>
+
 
 const double fluidVolume = 1000 * MASS / REST_DENSITY;
 
 int SIZE = 12;
+int NUM_PARTICLES = SIZE * SIZE * SIZE;
 
 Fluid::Fluid(void) {
     double particleDiameter = pow(fluidVolume, 1.0 / 3.0) / 10.0;
     double particleRadius = particleDiameter / 2.0;
+
+    allocateArray((void**)&cudaParticles, sizeof(Particle) * NUM_PARTICLES);
 
     for (double x = -particleRadius * SIZE; x <= particleRadius * SIZE; x += particleDiameter) {
         for (double y = -particleRadius * SIZE; y <= particleRadius * SIZE; y += particleDiameter) {
@@ -15,11 +22,13 @@ Fluid::Fluid(void) {
             }
         }
     }
+    NUM_PARTICLES = mParticles.size();
+
 }
 
 void Fluid::draw(void) {
     float sphereRadius = powf((3 * MASS) / (4 * M_PI * REST_DENSITY), 1.0f / 3.0f);
-    for (int i = 0; i < mParticles.size(); i++) {
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         glPushMatrix();
         glColor3f(1.0f, 1.0f, 1.0f);
         glTranslatef(mParticles[i].mPosition.x, mParticles[i].mPosition.y, mParticles[i].mPosition.z);
@@ -90,20 +99,20 @@ void Fluid::draw(void) {
 void Fluid::simulate_seq(void) {
     printf("SEQC\n");
     // Compute density and pressure
-    for (int i = 0; i < mParticles.size(); i++) {
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         mParticles[i].mDensity = calcDensity(mParticles[i].mPosition);
         mParticles[i].mPressure = calcPressure(mParticles[i].mDensity);
     }
 
     // Compute internal forces
-    for (int i = 0; i < mParticles.size(); i++) {
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         mParticles[i].mPressureForce = calcPressureForce(i, mParticles[i].mDensity, mParticles[i].mPressure,
                                                          mParticles[i].mPosition);
         mParticles[i].mViscosityForce = calcViscosityForce(i, mParticles[i].mVelocity, mParticles[i].mPosition);
     }
 
     // Compute external forces
-    for (int i = 0; i < mParticles.size(); i++) {
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         mParticles[i].mGravitationalForce = calcGravitationalForce(mParticles[i].mDensity);
         mParticles[i].mSurfaceNormal = calcSurfaceNormal(mParticles[i].mPosition);
         if (mParticles[i].mSurfaceNormal.length() >= THRESHOLD)
@@ -117,8 +126,7 @@ void Fluid::simulate_seq(void) {
     static float time = 0.0f;
     time += TIME_STEP;
     Vector3f totalForce;
-    for (int i = 0; i < mParticles.size(); i++) {
-        //totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce + mParticles[i].mSurfaceTensionForce;
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce + mParticles[i].mGravitationalForce +
                      mParticles[i].mSurfaceTensionForce;
         employEulerIntegrator(mParticles[i], totalForce);
@@ -134,20 +142,60 @@ void Fluid::simulate_seq(void) {
 }
 
 void Fluid::simulate_cuda(void) {
-    // THINGS
+
+    copyArrayToDevice((void*)cudaParticles, mParticles.data(), NUM_PARTICLES * sizeof(Particle));
+
+    cudaComputeDensities(cudaParticles, NUM_PARTICLES);
+
+
+    // Compute internal forces
+    for (int i = 0; i < NUM_PARTICLES; i++) {
+        mParticles[i].mPressureForce = calcPressureForce(i, cudaParticles[i].mDensity, cudaParticles[i].mPressure,
+                                                         cudaParticles[i].mPosition);
+        mParticles[i].mViscosityForce = calcViscosityForce(i, mParticles[i].mVelocity, mParticles[i].mPosition);
+    }
+
+    // Compute external forces
+    for (int i = 0; i < NUM_PARTICLES; i++) {
+        mParticles[i].mGravitationalForce = calcGravitationalForce(mParticles[i].mDensity);
+        mParticles[i].mSurfaceNormal = calcSurfaceNormal(mParticles[i].mPosition);
+        if (mParticles[i].mSurfaceNormal.length() >= THRESHOLD)
+            mParticles[i].mSurfaceTensionForce = calcSurfaceTensionForce(mParticles[i].mSurfaceNormal,
+                                                                         mParticles[i].mPosition);
+        else
+            mParticles[i].mSurfaceTensionForce = Vector3f(0.0f, 0.0f, 0.0f);
+    }
+
+    // Time integration and collision handling
+    static float time = 0.0f;
+    time += TIME_STEP;
+    Vector3f totalForce;
+    for (int i = 0; i < NUM_PARTICLES; i++) {
+        totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce + mParticles[i].mGravitationalForce +
+                     mParticles[i].mSurfaceTensionForce;
+        employEulerIntegrator(mParticles[i], totalForce);
+
+        Vector3f contactPoint;
+        Vector3f unitSurfaceNormal;
+        if (detectCollision(mParticles[i], contactPoint, unitSurfaceNormal)) {
+            updateVelocity(mParticles[i].mVelocity, unitSurfaceNormal,
+                           (mParticles[i].mPosition - contactPoint).length());
+            mParticles[i].mPosition = contactPoint;
+        }
+    }
 }
 
 void Fluid::simulate_omp(void) {
     // Compute density and pressure
     #pragma omp parallel for
-    for (int i = 0; i < mParticles.size(); i++) {
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         mParticles[i].mDensity = calcDensity(mParticles[i].mPosition);
         mParticles[i].mPressure = calcPressure(mParticles[i].mDensity);
     }
 
     // Compute internal forces
     #pragma omp parallel for
-    for (int i = 0; i < mParticles.size(); i++) {
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         mParticles[i].mPressureForce = calcPressureForce(i, mParticles[i].mDensity, mParticles[i].mPressure,
                                                          mParticles[i].mPosition);
         mParticles[i].mViscosityForce = calcViscosityForce(i, mParticles[i].mVelocity, mParticles[i].mPosition);
@@ -155,7 +203,7 @@ void Fluid::simulate_omp(void) {
 
     // Compute external forces
     #pragma omp parallel for
-    for (int i = 0; i < mParticles.size(); i++) {
+    for (int i = 0; i <NUM_PARTICLES; i++) {
         mParticles[i].mGravitationalForce = calcGravitationalForce(mParticles[i].mDensity);
         mParticles[i].mSurfaceNormal = calcSurfaceNormal(mParticles[i].mPosition);
         if (mParticles[i].mSurfaceNormal.length() >= THRESHOLD)
@@ -170,8 +218,7 @@ void Fluid::simulate_omp(void) {
     time += TIME_STEP;
     Vector3f totalForce;
     #pragma omp parallel for
-    for (int i = 0; i < mParticles.size(); i++) {
-        //totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce + mParticles[i].mSurfaceTensionForce;
+    for (int i = 0; i < NUM_PARTICLES; i++) {
         totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce + mParticles[i].mGravitationalForce +
                      mParticles[i].mSurfaceTensionForce;
         employEulerIntegrator(mParticles[i], totalForce);
@@ -188,7 +235,7 @@ void Fluid::simulate_omp(void) {
 
 float Fluid::calcDensity(Vector3f position) {
     float sum = 0.0f;
-    for (int j = 0; j < mParticles.size(); j++)
+    for (int j = 0; j < NUM_PARTICLES; j++)
         sum += mParticles[j].mMass * useDefaultKernel(position - mParticles[j].mPosition, SUPPORT_RADIUS);
     return sum;
 }
@@ -199,7 +246,7 @@ float Fluid::calcPressure(float density) {
 
 Vector3f Fluid::calcPressureForce(int indexOfCurrentParticle, float density, float pressure, Vector3f position) {
     Vector3f sum(0.0f, 0.0f, 0.0f);
-    for (int j = 0; j < mParticles.size(); j++) {
+    for (int j = 0; j < NUM_PARTICLES; j++) {
         if (j == indexOfCurrentParticle)
             continue;
         sum += usePressureKernel_gradient(position - mParticles[j].mPosition, SUPPORT_RADIUS) *
@@ -211,7 +258,7 @@ Vector3f Fluid::calcPressureForce(int indexOfCurrentParticle, float density, flo
 
 Vector3f Fluid::calcViscosityForce(int indexOfCurrentParticle, Vector3f velocity, Vector3f position) {
     Vector3f sum(0.0f, 0.0f, 0.0f);
-    for (int j = 0; j < mParticles.size(); j++) {
+    for (int j = 0; j < NUM_PARTICLES; j++) {
         if (j == indexOfCurrentParticle)
             continue;
         sum += (mParticles[j].mVelocity - velocity) * (mParticles[j].mMass / mParticles[j].mDensity) *
@@ -226,7 +273,7 @@ Vector3f Fluid::calcGravitationalForce(float density) {
 
 Vector3f Fluid::calcSurfaceNormal(Vector3f position) {
     Vector3f sum(0.0f, 0.0f, 0.0f);
-    for (int j = 0; j < mParticles.size(); j++)
+    for (int j = 0; j < NUM_PARTICLES; j++)
         sum += useDefaultKernel_gradient(position - mParticles[j].mPosition, SUPPORT_RADIUS) *
                (mParticles[j].mMass / mParticles[j].mDensity);
     return sum;
@@ -234,7 +281,7 @@ Vector3f Fluid::calcSurfaceNormal(Vector3f position) {
 
 Vector3f Fluid::calcSurfaceTensionForce(Vector3f surfaceNormal, Vector3f position) {
     float sum = 0.0f;
-    for (int j = 0; j < mParticles.size(); j++)
+    for (int j = 0; j < NUM_PARTICLES; j++)
         sum += (mParticles[j].mMass / mParticles[j].mDensity) *
                useDefaultKernel_laplacian(position - mParticles[j].mPosition, SUPPORT_RADIUS);
     return -(surfaceNormal.normalize() * SURFACE_TENSION * sum);
