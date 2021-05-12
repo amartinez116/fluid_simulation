@@ -29,7 +29,6 @@ void displayCallback( void ) {
         
         switch (INDEX) {
             case 0:
-                printf("in main.cpp");
                 fluid.simulate_seq();
                 break;
             case 1: 

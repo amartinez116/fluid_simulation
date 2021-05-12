@@ -6,20 +6,21 @@
 #include "fluid.hpp"
 
 __device__ void computeDensity(Particle* pi, const Particle* pj, float supportRadius) {
-    const float POLY6 = 315.f / (64.f * M_PI * powf(supportRadius, 9.f));
+    const float POLY6 = 315 / (64 * M_PI * powf(supportRadius, 9.0f));
     float x = pi->mPosition.x - pj->mPosition.x;
     float y = pi->mPosition.y - pj->mPosition.y;
     float z = pi->mPosition.z - pj->mPosition.z;
 
-    float r2 = powf(x*x + y*y + z*z, 0.5);
+    float r2 = sqrt((x * x) + (y * y) + (z * z));
 
     if (r2 < supportRadius) {
-        pi->mDensity += POLY6 * powf(supportRadius - r2, 3.f);
+        pi->mDensity += pj->mMass * POLY6 * powf(supportRadius*supportRadius - r2*r2, 3.0f);
     }
 }
 
+// TODO: do we include the fmax? we get diff results w/ it
 __device__ void computePressure(Particle* p) {
-    p->mPressure = fmaxf(0.f, GAS_STIFFNESS * (p->mDensity - REST_DENSITY));
+    p->mPressure = GAS_STIFFNESS * (p->mDensity - REST_DENSITY);
 }
 
 __global__ void
@@ -31,25 +32,21 @@ calcDensitykernel(Particle* particles, int num_particles) {
         pi->mDensity = 0.0f;
         for (int j = 0; j < num_particles; j++) {
             Particle *pj = &particles[j];
-            computeDensity(pi, pj, 0);
+            computeDensity(pi, pj, SUPPORT_RADIUS);
         }
         computePressure(pi);
     }
 }
 
-void cudaComputeDensities(Particle* host_particles, int num_particles) {
-    Particle* device_particles;
-    cudaMalloc((void **) &device_particles, sizeof(Particle) * num_particles);
-    cudaMemcpy(device_particles, host_particles, num_particles * sizeof(Particle), cudaMemcpyHostToDevice);
-
+void cudaComputeDensities(Particle* host_particles, int num_particles, Particle* result_particles) {
     const int threadsPerBlock = 128;
     const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
 
-    calcDensitykernel <<<blocks, threadsPerBlock>>>(device_particles, num_particles);
+    calcDensitykernel <<<blocks, threadsPerBlock>>>(host_particles, num_particles);
 
     cudaDeviceSynchronize();
 
-    cudaMemcpy(host_particles, device_particles, num_particles * sizeof(Particle), cudaMemcpyDeviceToHost);
+    copyArrayFromDevice(result_particles, host_particles, num_particles * sizeof(Particle));
 }
 
 void allocateArray(void** devPtr, size_t size) {
@@ -58,4 +55,8 @@ void allocateArray(void** devPtr, size_t size) {
 
 void copyArrayToDevice(void* device, const void* host, size_t size) {
     cudaMemcpy((char*)device, host, size, cudaMemcpyHostToDevice);
+}
+
+void copyArrayFromDevice(void* host, const void* device, size_t size){
+    cudaMemcpy((char*)host, device, size, cudaMemcpyDeviceToHost);
 }

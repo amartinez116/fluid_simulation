@@ -49,7 +49,7 @@ public:
     Vector3f usePressureKernel_gradient( Vector3f, float );
     float useViscosityKernel_laplacian( Vector3f, float );
 
-    std::vector<Particle> mParticles;
+    vector<Particle> mParticles;
     Particle* cudaParticles;
 };
 
