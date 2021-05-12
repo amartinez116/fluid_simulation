@@ -7,9 +7,6 @@
 #include "fluid_cuda.cuh"
 #include "fluid.hpp"
 
-const int threadsPerBlock = 128;
-const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
-
 __device__ void 
 computeDensity(int index, Particle* pi, const Particle* pj, float supportRadius) {
     const float POLY6 = 315 / (64 * M_PI * powf(supportRadius, 9.0f));
@@ -28,6 +25,68 @@ computeDensity(int index, Particle* pi, const Particle* pj, float supportRadius)
 __device__ void 
 computePressure(Particle* p) {
     p->mPressure = GAS_STIFFNESS * (p->mDensity - REST_DENSITY);
+}
+
+__device__ void 
+computeViscosityForce(Particle *pi, Particle *pj, float supportRadius) {
+    float x = pi->mPosition.x - pj->mPosition.x;
+    float y = pi->mPosition.y - pj->mPosition.y;
+    float z = pi->mPosition.z - pj->mPosition.z;
+    float dist = sqrt((x * x) + (y * y) + (z * z));
+
+    float useViscosityKernel_laplacian = 0.0f;
+
+    if (dist <= supportRadius) {
+        useViscosityKernel_laplacian = (45 / (M_PI * powf(supportRadius, 6.0f))) * (supportRadius - dist);
+    }
+
+    pi->mViscosityForce.x += (pj->mVelocity.x - pi->mVelocity.x) *
+                             (pj->mMass / pj->mDensity) * useViscosityKernel_laplacian;
+
+    pi->mViscosityForce.y += (pj->mVelocity.y - pi->mVelocity.y) *
+                             (pj->mMass / pj->mDensity) * useViscosityKernel_laplacian;
+
+    pi->mViscosityForce.z += (pj->mVelocity.z - pi->mVelocity.z) *
+                             (pj->mMass / pj->mDensity) * useViscosityKernel_laplacian;
+}
+
+__device__ void 
+computePressureForce(int index, Particle *pi, const Particle *pj, float supportRadius) {
+    float x = pi->mPosition.x - pj->mPosition.x;
+    float y = pi->mPosition.y - pj->mPosition.y;
+    float z = pi->mPosition.z - pj->mPosition.z;
+    float dist = sqrt((x * x) + (y * y) + (z * z));
+
+    float density = pi->mDensity;
+    float pressure = pi->mPressure;
+
+    float distX = x / dist;
+    float distY = y / dist;
+    float distZ = z / dist;
+
+    float valX = 0.0f;
+    float valY = 0.0f;
+    float valZ = 0.0f;
+
+    if (dist <= supportRadius) {
+        if (dist < 10e-5) { // If ||r|| -> 0+
+            valX = -(1.0f / sqrt(3.0f)) * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
+            valY = -(1.0f / sqrt(3.0f)) * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
+            valZ = -(1.0f / sqrt(3.0f)) * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
+        } else {
+            valX = -distX * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
+            valY = -distY * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
+            valZ = -distZ * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
+        }
+
+        float pressureVal = (pressure / (density * density) +
+                             pj->mPressure /
+                             (pj->mDensity * pj->mDensity)) * pj->mMass;
+
+        pi->mPressureForce.x += valX * pressureVal;
+        pi->mPressureForce.y += valY * pressureVal;
+        pi->mPressureForce.z += valZ * pressureVal;
+    }
 }
 
 __device__ void 
@@ -216,7 +275,7 @@ updateVelocity(Particle *p, float contact_x, float contact_y, float contact_z,
 }
 
 __global__ void
-calcDensitykernel(Particle *particles, int num_particles) {
+calcDensityKernel(Particle *particles, int num_particles) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index < num_particles) {
@@ -231,102 +290,7 @@ calcDensitykernel(Particle *particles, int num_particles) {
 }
 
 __global__ void
-handleCollisionKernel(Particle* particles, int num_particles) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index < num_particles) {
-        Particle *pi = &particles[index];
-        float force_x = pi->mPressureForce.x + pi->mViscosityForce.x + 
-                        pi->mGravitationalForce.x + pi->mSurfaceTension.x;
-        float force_y = pi->mPressureForce.y + pi->mViscosityForce.y + 
-                        pi->mGravitationalForce.y + pi->mSurfaceTension.y;
-        float force_z = pi->mPressureForce.z + pi->mViscosityForce.z + 
-                        pi->mGravitationalForce.z + pi->mSurfaceTension.z;
-        employEulerIntegrator(pi, force_x, force_y, force_z);
-
-        float contact_x;
-        float contact_y;
-        float contact_z;
-        float normal_x;
-        float normal_y;
-        float normal_z;
-
-        if (detectCollision(pi, &contact_x, &contact_y, &contact_z, &normal_x, &normal_y, &normal_z)) {
-            updateVelocity(pi, &contact_x, &contact_y, &contact_z, &normal_x, &normal_y, &normal_z);
-            pi->mPosition.x = contact_x;
-            pi->mPosition.y = contact_y;
-            pi->mPosition.z = contact_z;
-        }
-    }
-}
-
-__device__ void computePressureForce(int index, Particle *pi, const Particle *pj, float supportRadius) {
-    float x = pi->mPosition.x - pj->mPosition.x;
-    float y = pi->mPosition.y - pj->mPosition.y;
-    float z = pi->mPosition.z - pj->mPosition.z;
-    float dist = sqrt((x * x) + (y * y) + (z * z));
-
-    float density = pi->mDensity;
-    float pressure = pi->mPressure;
-
-    float distX = x / dist;
-    float distY = y / dist;
-    float distZ = z / dist;
-
-    float valX = 0.0f;
-    float valY = 0.0f;
-    float valZ = 0.0f;
-
-    if (dist <= supportRadius) {
-        if (dist < 10e-5) { // If ||r|| -> 0+
-            valX = -(1.0f / sqrt(3.0f)) * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
-            valY = -(1.0f / sqrt(3.0f)) * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
-            valZ = -(1.0f / sqrt(3.0f)) * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
-        } else {
-            valX = -distX * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
-            valY = -distY * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
-            valZ = -distZ * (45 / (M_PI * powf(supportRadius, 6.0f))) * powf(supportRadius - dist, 2.0f);
-        }
-
-        float pressureVal = (pressure / (density * density) +
-                             pj->mPressure /
-                             (pj->mDensity * pj->mDensity)) * pj->mMass;
-
-        pi->mPressureForce.x += valX * pressureVal;
-        pi->mPressureForce.y += valY * pressureVal;
-        pi->mPressureForce.z += valZ * pressureVal;
-    }
-}
-
-void cudaComputeDensities(Particle* cudaParticles, int num_particles) {
-    calcDensitykernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
-    cudaDeviceSynchronize();
-}
-
-__device__ void computeViscosityForce(Particle *pi, Particle *pj, float supportRadius) {
-    float x = pi->mPosition.x - pj->mPosition.x;
-    float y = pi->mPosition.y - pj->mPosition.y;
-    float z = pi->mPosition.z - pj->mPosition.z;
-    float dist = sqrt((x * x) + (y * y) + (z * z));
-
-    float useViscosityKernel_laplacian = 0.0f;
-
-    if (dist <= supportRadius) {
-        useViscosityKernel_laplacian = (45 / (M_PI * powf(supportRadius, 6.0f))) * (supportRadius - dist);
-    }
-
-    pi->mViscosityForce.x += (pj->mVelocity.x - pi->mVelocity.x) *
-                             (pj->mMass / pj->mDensity) * useViscosityKernel_laplacian;
-
-    pi->mViscosityForce.y += (pj->mVelocity.y - pi->mVelocity.y) *
-                             (pj->mMass / pj->mDensity) * useViscosityKernel_laplacian;
-
-    pi->mViscosityForce.z += (pj->mVelocity.z - pi->mVelocity.z) *
-                             (pj->mMass / pj->mDensity) * useViscosityKernel_laplacian;
-}
-
-__global__ void
-calcInternalForceskernel(Particle *particles, int num_particles) {
+calcInternalForcesKernel(Particle *particles, int num_particles) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index < num_particles) {
@@ -356,16 +320,127 @@ calcInternalForceskernel(Particle *particles, int num_particles) {
     }
 }
 
+__global__ void
+calcExternalForcesKernel(Particle *particles, int num_particles) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index < num_particles) {
+        Particle *pi = &particles[index];
+        pi->mGravitationalForce.x = 0.0f * pi->mDensity;
+        pi->mGravitationalForce.y = GRAVITATIONAL_ACCELERATION * pi->mDensity;
+        pi->mGravitationalForce.z = 0.0f * pi->mDensity;
+
+        pi->mSurfaceNormal.x = 0.0f;
+        pi->mSurfaceNormal.y = 0.0f;
+        pi->mSurfaceNormal.z = 0.0f;
+        for (int j = 0; j < num_particles; j++) {
+            Particle *pj = &particles[j];
+            float dist_x = pi->mPosition.x - pj->mPosition.x;
+            float dist_y = pi->mPosition.y - pj->mPosition.y;
+            float dist_z = pi->mPosition.z - pj->mPosition.z;
+
+            float dist = sqrt((dist_x * dist_x) + (dist_y * dist_y) + (dist_z * dist_z));
+            float volume = pj->mMass / pj->mDensity;
+            if (dist <= SUPPORT_RADIUS) {
+                float calc = (945 / (32 * M_PI * powf(SUPPORT_RADIUS, 9.0f))) * powf(SUPPORT_RADIUS * SUPPORT_RADIUS - dist * dist, 2.0f);
+
+                pi->mSurfaceNormal.x +=  - (dist_x * calc) * volume;
+                pi->mSurfaceNormal.y +=  - (dist_y * calc) * volume;
+                pi->mSurfaceNormal.z +=  - (dist_z * calc) * volume;
+            }
+        }
+
+        float normal_length = sqrt((pi->mSurfaceNormal.x * pi->mSurfaceNormal.x) + (pi->mSurfaceNormal.y * pi->mSurfaceNormal.y) + (pi->mSurfaceNormal.z * pi->mSurfaceNormal.z));
+
+        pi->mSurfaceTensionForce.x = 0.0f;
+        pi->mSurfaceTensionForce.y = 0.0f;
+        pi->mSurfaceTensionForce.z = 0.0f;
+
+        if (normal_length >= THRESHOLD) {
+            for (int j = 0; j < num_particles; j++) {
+                Particle *pj = &particles[j];
+                float dist_x = pi->mPosition.x - pj->mPosition.x;
+                float dist_y = pi->mPosition.y - pj->mPosition.y;
+                float dist_z = pi->mPosition.z - pj->mPosition.z;
+    
+                float dist = sqrt((dist_x * dist_x) + (dist_y * dist_y) + (dist_z * dist_z));
+                float volume = pj->mMass / pj->mDensity;
+                if (dist <= SUPPORT_RADIUS) {
+                    float calc = -(945 / (32 * M_PI * powf(SUPPORT_RADIUS, 9.0f))) *
+                                  (SUPPORT_RADIUS * SUPPORT_RADIUS - dist * dist) *
+                                  (3 * SUPPORT_RADIUS * SUPPORT_RADIUS - 7 * dist * dist);
+
+                    pi->mSurfaceTensionForce.x += volume * calc;
+                    pi->mSurfaceTensionForce.y += volume * calc;
+                    pi->mSurfaceTensionForce.z += volume * calc;
+                }
+            }
+
+            pi->mSurfaceTensionForce.x = - (pi->mSurfaceNormal.x / normal_length) * SURFACE_TENSION * pi->mSurfaceTensionForce.x;
+            pi->mSurfaceTensionForce.y = - (pi->mSurfaceNormal.y / normal_length) * SURFACE_TENSION * pi->mSurfaceTensionForce.y;
+            pi->mSurfaceTensionForce.z = - (pi->mSurfaceNormal.z / normal_length) * SURFACE_TENSION * pi->mSurfaceTensionForce.z;
+        }
+    }
+}
+
+__global__ void
+handleCollisionKernel(Particle* particles, int num_particles) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index < num_particles) {
+        Particle *pi = &particles[index];
+        float force_x = pi->mPressureForce.x + pi->mViscosityForce.x + 
+                        pi->mGravitationalForce.x + pi->mSurfaceTensionForce.x;
+        float force_y = pi->mPressureForce.y + pi->mViscosityForce.y + 
+                        pi->mGravitationalForce.y + pi->mSurfaceTensionForce.y;
+        float force_z = pi->mPressureForce.z + pi->mViscosityForce.z + 
+                        pi->mGravitationalForce.z + pi->mSurfaceTensionForce.z;
+        employEulerIntegrator(pi, force_x, force_y, force_z);
+
+        float contact_x;
+        float contact_y;
+        float contact_z;
+        float normal_x;
+        float normal_y;
+        float normal_z;
+
+        if (detectCollision(pi, &contact_x, &contact_y, &contact_z, &normal_x, &normal_y, &normal_z)) {
+            updateVelocity(pi, contact_x, contact_y, contact_z, normal_x, normal_y, normal_z);
+            pi->mPosition.x = contact_x;
+            pi->mPosition.y = contact_y;
+            pi->mPosition.z = contact_z;
+        }
+    }
+}
+
+void cudaComputeDensities(Particle* cudaParticles, int num_particles) {
+    const int threadsPerBlock = 128;
+    const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
+
+    calcDensityKernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
+    cudaDeviceSynchronize();
+}
+
 void cudaComputeInternalForces(Particle *cudaParticles, int num_particles) {
-    calcInternalForceskernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
+    const int threadsPerBlock = 128;
+    const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
+
+    calcInternalForcesKernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
     cudaDeviceSynchronize();
 }
 
 void cudaComputeExternalForces(Particle *cudaParticles, int num_particles) {
+    const int threadsPerBlock = 128;
+    const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
+
+    calcExternalForcesKernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
     cudaDeviceSynchronize();
 }
 
 void cudaCollisionHandling(Particle* cudaParticles, int num_particles) {
+    const int threadsPerBlock = 128;
+    const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
+
     handleCollisionKernel <<<blocks, threadsPerBlock>>> (cudaParticles, num_particles);
     cudaDeviceSynchronize();
 }

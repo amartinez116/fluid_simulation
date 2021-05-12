@@ -158,37 +158,6 @@ void Fluid::simulate_cuda(void) {
 
   copyArrayFromDevice(mParticles.data(), (void *)cudaParticles,
                       mParticles.size() * sizeof(Particle));
-
-  // Compute external forces
-  for (int i = 0; i < mParticles.size(); i++) {
-    mParticles[i].mGravitationalForce =
-        calcGravitationalForce(mParticles[i].mDensity);
-    mParticles[i].mSurfaceNormal = calcSurfaceNormal(mParticles[i].mPosition);
-    if (mParticles[i].mSurfaceNormal.length() >= THRESHOLD)
-      mParticles[i].mSurfaceTensionForce = calcSurfaceTensionForce(
-          mParticles[i].mSurfaceNormal, mParticles[i].mPosition);
-    else
-      mParticles[i].mSurfaceTensionForce = Vector3f(0.0f, 0.0f, 0.0f);
-  }
-
-  // Time integration and collision handling
-  static float time = 0.0f;
-  time += TIME_STEP;
-  Vector3f totalForce;
-  for (int i = 0; i < mParticles.size(); i++) {
-    totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce +
-                 mParticles[i].mGravitationalForce +
-                 mParticles[i].mSurfaceTensionForce;
-    employEulerIntegrator(mParticles[i], totalForce);
-
-    Vector3f contactPoint;
-    Vector3f unitSurfaceNormal;
-    if (detectCollision(mParticles[i], contactPoint, unitSurfaceNormal)) {
-      updateVelocity(mParticles[i].mVelocity, unitSurfaceNormal,
-                     (mParticles[i].mPosition - contactPoint).length());
-      mParticles[i].mPosition = contactPoint;
-    }
-  }
 }
 
 void Fluid::simulate_omp(void) {
@@ -290,7 +259,7 @@ Vector3f Fluid::calcViscosityForce(int indexOfCurrentParticle,
 }
 
 Vector3f Fluid::calcGravitationalForce(float density) {
-  return GRAVITATIONAL_ACCELERATION * density;
+  return Vector3f(0.0f, GRAVITATIONAL_ACCELERATION * density, 0.0f);
 }
 
 Vector3f Fluid::calcSurfaceNormal(Vector3f position) {

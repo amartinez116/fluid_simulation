@@ -18,7 +18,7 @@
 #define RESTITUTION                0.5f
 #define KERNEL_PARTICLES           20
 #define SUPPORT_RADIUS             0.0457f
-#define GRAVITATIONAL_ACCELERATION Vector3f(0.0f, -9.82f, 0.0f)
+#define GRAVITATIONAL_ACCELERATION -9.82f
 
 #define TIME_STEP                  0.01f
 #define BOX_SIZE                   0.5f
