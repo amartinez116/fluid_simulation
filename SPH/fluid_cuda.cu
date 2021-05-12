@@ -7,7 +7,11 @@
 #include "fluid_cuda.cuh"
 #include "fluid.hpp"
 
-__device__ void computeDensity(int index, Particle *pi, const Particle *pj, float supportRadius) {
+const int threadsPerBlock = 128;
+const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
+
+__device__ void 
+computeDensity(int index, Particle* pi, const Particle* pj, float supportRadius) {
     const float POLY6 = 315 / (64 * M_PI * powf(supportRadius, 9.0f));
     float x = pi->mPosition.x - pj->mPosition.x;
     float y = pi->mPosition.y - pj->mPosition.y;
@@ -21,8 +25,194 @@ __device__ void computeDensity(int index, Particle *pi, const Particle *pj, floa
 }
 
 // TODO: do we include the fmax? we get diff results w/ it
-__device__ void computePressure(Particle *p) {
+__device__ void 
+computePressure(Particle* p) {
     p->mPressure = GAS_STIFFNESS * (p->mDensity - REST_DENSITY);
+}
+
+__device__ void 
+employEulerIntegrator(Particle *p, const float x, const float y, const float z) {
+    p->mAcceleration.x = x / p->mDensity;
+    p->mAcceleration.y = y / p->mDensity;
+    p->mAcceleration.z = z / p->mDensity;
+
+    p->mVelocity.x = p->mVelocity.x + p->mAcceleration.x * TIME_STEP;
+    p->mVelocity.y = p->mVelocity.y + p->mAcceleration.y * TIME_STEP;
+    p->mVelocity.z = p->mVelocity.z + p->mAcceleration.z * TIME_STEP;
+
+    p->mPosition.x = p->mPosition.x + p->mVelocity.x * TIME_STEP;
+    p->mPosition.y = p->mPosition.y + p->mVelocity.y * TIME_STEP;
+    p->mPosition.z = p->mPosition.z + p->mVelocity.z * TIME_STEP;
+}
+
+__device__ bool 
+detectCollision(Particle *p, float *contact_x, float *contact_y, float *contact_z,
+                             float *normal_x, float *normal_y, float *normal_z) {
+  if (abs(p->mPosition.x) <= BOX_SIZE / 2 &&
+      abs(p->mPosition.y) <= BOX_SIZE / 2 &&
+      abs(p->mPosition.z) <= BOX_SIZE / 2)
+    return false;
+
+  char maxComponent = 'x';
+  float maxValue = abs(p->mPosition.x);
+  if (maxValue < abs(p->mPosition.y)) {
+    maxComponent = 'y';
+    maxValue = abs(p->mPosition.y);
+  }
+  if (maxValue < abs(p->mPosition.z)) {
+    maxComponent = 'z';
+    maxValue = abs(p->mPosition.z);
+  }
+  // 'unitSurfaceNormal' is based on the current position component with the
+  // largest absolute value
+  switch (maxComponent) {
+    case 'x':
+        if (p->mPosition.x < -BOX_SIZE / 2) {
+            *contact_x = -BOX_SIZE / 2;
+            *contact_y = p->mPosition.y;
+            *contact_z = p->mPosition.z;
+
+            if (p->mPosition.y < -BOX_SIZE / 2) {
+                *contact_y = -BOX_SIZE / 2;
+            } else if (p->mPosition.y > BOX_SIZE / 2) {
+                *contact_y = BOX_SIZE / 2;
+            }
+
+            if (p->mPosition.z < -BOX_SIZE / 2) {
+                *contact_z = -BOX_SIZE / 2;
+            } else if (p->mPosition.z > BOX_SIZE / 2) {
+                *contact_z = BOX_SIZE / 2;
+            }
+
+            *normal_x = 1.0f;
+            *normal_y = 0.0f;
+            *normal_z = 0.0f;
+        } else if (p->mPosition.x > BOX_SIZE / 2) {
+            *contact_x = BOX_SIZE / 2;
+            *contact_y = p->mPosition.y;
+            *contact_z = p->mPosition.z;
+
+            if (p->mPosition.y < -BOX_SIZE / 2) {
+                *contact_y = -BOX_SIZE / 2;
+            } else if (p->mPosition.y > BOX_SIZE / 2) {
+                *contact_y = BOX_SIZE / 2;
+            }
+    
+            if (p->mPosition.z < -BOX_SIZE / 2) {
+                *contact_z = -BOX_SIZE / 2;
+            } else if (p->mPosition.z > BOX_SIZE / 2) {
+                *contact_z = BOX_SIZE / 2;
+            }
+    
+            *normal_x = -1.0f;
+            *normal_y = 0.0f;
+            *normal_z = 0.0f;
+        }
+        break;
+    case 'y':
+        if (p->mPosition.y < -BOX_SIZE / 2) {
+            *contact_x = p->mPosition.x;
+            *contact_y = -BOX_SIZE / 2;
+            *contact_z = p->mPosition.z;
+
+            if (p->mPosition.x < -BOX_SIZE / 2) {
+                *contact_x = -BOX_SIZE / 2;
+            } else if (p->mPosition.x > BOX_SIZE / 2) {
+                *contact_x = BOX_SIZE / 2;
+            }
+
+            if (p->mPosition.z < -BOX_SIZE / 2) {
+                *contact_z = -BOX_SIZE / 2;
+            } else if (p->mPosition.z > BOX_SIZE / 2) {
+                *contact_z = BOX_SIZE / 2;
+            }
+
+            *normal_x = 0.0f;
+            *normal_y = 1.0f;
+            *normal_z = 0.0f;
+        } else if (p->mPosition.y > BOX_SIZE / 2) {
+            *contact_x = p->mPosition.x;
+            *contact_y = BOX_SIZE / 2;
+            *contact_z = p->mPosition.z;
+
+            if (p->mPosition.x < -BOX_SIZE / 2) {
+                *contact_x = -BOX_SIZE / 2;
+            } else if (p->mPosition.x > BOX_SIZE / 2) {
+                *contact_x = BOX_SIZE / 2;
+            }
+
+            if (p->mPosition.z < -BOX_SIZE / 2) {
+                *contact_z = -BOX_SIZE / 2;
+            } else if (p->mPosition.z > BOX_SIZE / 2) {
+                *contact_z = BOX_SIZE / 2;
+            }
+
+            *normal_x = 0.0f;
+            *normal_y = -1.0f;
+            *normal_z = 0.0f;
+        }
+        break;
+  case 'z':
+        if (p->mPosition.z < -BOX_SIZE / 2) {
+            *contact_x = p->mPosition.x;
+            *contact_y = p->mPosition.y;
+            *contact_z = -BOX_SIZE / 2;
+
+            if (p->mPosition.x < -BOX_SIZE / 2) {
+                *contact_x = -BOX_SIZE / 2;
+            } else if (p->mPosition.x > BOX_SIZE / 2) {
+                *contact_x = BOX_SIZE / 2;
+            }
+
+            if (p->mPosition.y < -BOX_SIZE / 2) {
+                *contact_y = -BOX_SIZE / 2;
+            } else if (p->mPosition.y > BOX_SIZE / 2) {
+                *contact_y = BOX_SIZE / 2;
+            }
+
+            *normal_x = 0.0f;
+            *normal_y = 0.0f;
+            *normal_z = 1.0f;
+        } else if (p->mPosition.z > BOX_SIZE / 2) {
+            *contact_x = p->mPosition.x;
+            *contact_y = p->mPosition.y;
+            *contact_z = BOX_SIZE / 2;
+
+            if (p->mPosition.x < -BOX_SIZE / 2) {
+                *contact_x = -BOX_SIZE / 2;
+            } else if (p->mPosition.x > BOX_SIZE / 2) {
+                *contact_x = BOX_SIZE / 2;
+            }
+
+            if (p->mPosition.y < -BOX_SIZE / 2) {
+                *contact_y = -BOX_SIZE / 2;
+            } else if (p->mPosition.y > BOX_SIZE / 2) {
+                *contact_y = BOX_SIZE / 2;
+            }
+
+            *normal_x = 0.0f;
+            *normal_y = 0.0f;
+            *normal_z = -1.0f;
+        }
+        break;
+  }
+  return true;
+}
+
+__device__ void
+updateVelocity(Particle *p, float contact_x, float contact_y, float contact_z,
+                            float normal_x, float normal_y, float normal_z) {
+    
+    float p_x = p->mPosition.x - contact_x;
+    float p_y = p->mPosition.y - contact_y;
+    float p_z = p->mPosition.z - contact_z;
+    float penetrationDepth = sqrt((p_x * p_x) + (p_y * p_y) + (p_z * p_z));
+
+    float v_length = sqrt((p->mVelocity.x * p->mVelocity.x) + (p->mVelocity.y * p->mVelocity.y) + (p->mVelocity.z * p->mVelocity.z));
+    float velocityDotNormal = (p->mVelocity.x * normal_x) + (p->mVelocity.y * normal_y) + (p->mVelocity.z * normal_z);
+    p->mVelocity.x = p->mVelocity.x - normal_x * (1 + RESTITUTION * penetrationDepth / (TIME_STEP * v_length)) * velocityDotNormal;
+    p->mVelocity.y = p->mVelocity.y - normal_y * (1 + RESTITUTION * penetrationDepth / (TIME_STEP * v_length)) * velocityDotNormal;
+    p->mVelocity.z = p->mVelocity.z - normal_z * (1 + RESTITUTION * penetrationDepth / (TIME_STEP * v_length)) * velocityDotNormal;
 }
 
 __global__ void
@@ -40,13 +230,34 @@ calcDensitykernel(Particle *particles, int num_particles) {
     }
 }
 
-void cudaComputeDensities(Particle *cudaParticles, int num_particles) {
-    const int threadsPerBlock = 128;
-    const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
+__global__ void
+handleCollisionKernel(Particle* particles, int num_particles) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-    calcDensitykernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
+    if (index < num_particles) {
+        Particle *pi = &particles[index];
+        float force_x = pi->mPressureForce.x + pi->mViscosityForce.x + 
+                        pi->mGravitationalForce.x + pi->mSurfaceTension.x;
+        float force_y = pi->mPressureForce.y + pi->mViscosityForce.y + 
+                        pi->mGravitationalForce.y + pi->mSurfaceTension.y;
+        float force_z = pi->mPressureForce.z + pi->mViscosityForce.z + 
+                        pi->mGravitationalForce.z + pi->mSurfaceTension.z;
+        employEulerIntegrator(pi, force_x, force_y, force_z);
 
-    cudaDeviceSynchronize();
+        float contact_x;
+        float contact_y;
+        float contact_z;
+        float normal_x;
+        float normal_y;
+        float normal_z;
+
+        if (detectCollision(pi, &contact_x, &contact_y, &contact_z, &normal_x, &normal_y, &normal_z)) {
+            updateVelocity(pi, &contact_x, &contact_y, &contact_z, &normal_x, &normal_y, &normal_z);
+            pi->mPosition.x = contact_x;
+            pi->mPosition.y = contact_y;
+            pi->mPosition.z = contact_z;
+        }
+    }
 }
 
 __device__ void computePressureForce(int index, Particle *pi, const Particle *pj, float supportRadius) {
@@ -85,6 +296,11 @@ __device__ void computePressureForce(int index, Particle *pi, const Particle *pj
         pi->mPressureForce.y += valY * pressureVal;
         pi->mPressureForce.z += valZ * pressureVal;
     }
+}
+
+void cudaComputeDensities(Particle* cudaParticles, int num_particles) {
+    calcDensitykernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
+    cudaDeviceSynchronize();
 }
 
 __device__ void computeViscosityForce(Particle *pi, Particle *pj, float supportRadius) {
@@ -141,11 +357,7 @@ calcInternalForceskernel(Particle *particles, int num_particles) {
 }
 
 void cudaComputeInternalForces(Particle *cudaParticles, int num_particles) {
-    const int threadsPerBlock = 128;
-    const int blocks = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
-
     calcInternalForceskernel <<<blocks, threadsPerBlock>>>(cudaParticles, num_particles);
-
     cudaDeviceSynchronize();
 }
 
@@ -153,7 +365,8 @@ void cudaComputeExternalForces(Particle *cudaParticles, int num_particles) {
     cudaDeviceSynchronize();
 }
 
-void cudaCollisionHandling(Particle *cudaParticles, int num_particles) {
+void cudaCollisionHandling(Particle* cudaParticles, int num_particles) {
+    handleCollisionKernel <<<blocks, threadsPerBlock>>> (cudaParticles, num_particles);
     cudaDeviceSynchronize();
 }
 
