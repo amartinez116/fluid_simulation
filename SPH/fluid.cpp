@@ -5,7 +5,7 @@
 
 const double fluidVolume = 1000 * MASS / REST_DENSITY;
 
-double SIZE = 12;
+double SIZE = 16;
 
 Fluid::Fluid(void) {
   double particleDiameter = pow(fluidVolume, 1.0 / 3.0) / 10.0;
@@ -21,7 +21,7 @@ Fluid::Fluid(void) {
       }
     }
   }
-
+  std::cout << mParticles.size() << std::endl;
   allocateArray((void **)&cudaParticles, sizeof(Particle) * mParticles.size());
 }
 

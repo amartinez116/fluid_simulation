@@ -21,7 +21,7 @@
 #define GRAVITATIONAL_ACCELERATION -9.82f
 
 #define TIME_STEP                  0.01f
-#define BOX_SIZE                   0.5f
+#define BOX_SIZE                   0.75f
 
 class Fluid {
 public:

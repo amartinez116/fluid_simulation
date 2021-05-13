@@ -2,6 +2,9 @@
 #include <cassert>
 #include <cstring>
 
+#include <iostream>
+#include <fstream>
+
 #include "fluid.hpp"
 
 using namespace std;
@@ -11,6 +14,8 @@ using namespace std;
 Fluid fluid;
 int NCORES = 1;
 int INDEX = 0;
+int ITERATION = 0;
+std::ofstream myfile;
 
 bool start = false;
 
@@ -25,6 +30,7 @@ void displayCallback( void ) {
     gluLookAt(0.2, 0.3, 0.6, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
     if (start) {
+        ITERATION++;
         clock_gettime(CLOCK_REALTIME, &before);
         
         switch (INDEX) {
@@ -42,9 +48,8 @@ void displayCallback( void ) {
         clock_gettime(CLOCK_REALTIME, &after);
 
         double delta_ms = (double) (after.tv_sec - before.tv_sec) * 1000.0 + (after.tv_nsec - before.tv_nsec) / 1000000.0;
-        putchar('\n');
-        printf("============ Time ============\n");
-        printf("Time: %.3f ms (%.3f s)\n", delta_ms, delta_ms / 1000.0);
+        myfile << delta_ms << "\n";
+        std::cout << ITERATION << std::endl;
     }
 
     fluid.draw();
@@ -60,8 +65,10 @@ void keyboardCallback( unsigned char key, int x, int y ) {
     if (key == 's') // Start to simulate
         start = true;
 
-    if (key == 'q')
+    if (key == 'q') {
+        myfile.close();
         exit(0);
+    }
 }
 
 void setLighting( void ) {
@@ -113,6 +120,8 @@ int main( int argc, char *argv[] ) {
     } else if (INDEX == 1 && NCORES < 1) {
         error_exit("Illegal core count: %d\n", NCORES);
     }
+
+    myfile.open ("cuda.csv");
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
