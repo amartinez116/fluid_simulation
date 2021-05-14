@@ -1,4 +1,4 @@
-Following code has been taken from: https://github.com/GuanBiao/SPH
+Following code has been adapted from: https://github.com/GuanBiao/SPH
 
 # Smoothed Particle Hydrodynamics
 
