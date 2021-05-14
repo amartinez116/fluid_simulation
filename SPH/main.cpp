@@ -38,7 +38,7 @@ void displayCallback( void ) {
                 fluid.simulate_seq();
                 break;
             case 1: 
-                fluid.simulate_omp();
+                fluid.simulate_omp(NCORES);
                 break;
             case 2: 
                 fluid.simulate_cuda();

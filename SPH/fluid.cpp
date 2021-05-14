@@ -5,7 +5,7 @@
 
 const double fluidVolume = 1000 * MASS / REST_DENSITY;
 
-double SIZE = 16;
+double SIZE = 20;
 
 Fluid::Fluid(void) {
   double particleDiameter = pow(fluidVolume, 1.0 / 3.0) / 10.0;
@@ -21,7 +21,7 @@ Fluid::Fluid(void) {
       }
     }
   }
-  std::cout << mParticles.size() << std::endl;
+
   allocateArray((void **)&cudaParticles, sizeof(Particle) * mParticles.size());
 }
 
@@ -160,18 +160,18 @@ void Fluid::simulate_cuda(void) {
                       mParticles.size() * sizeof(Particle));
 }
 
-void Fluid::simulate_omp(void) {
-  std::cout << "OMP" << std::endl;
+void Fluid::simulate_omp(int NCORES) {
+  std::cout << "OMP: " << NCORES<< std::endl;
 
 // Compute density and pressure
-#pragma omp parallel for
+  #pragma omp parallel for num_threads(NCORES)
   for (int i = 0; i < mParticles.size(); i++) {
     mParticles[i].mDensity = calcDensity(mParticles[i].mPosition);
     mParticles[i].mPressure = calcPressure(mParticles[i].mDensity);
   }
 
 // Compute internal forces
-#pragma omp parallel for
+  #pragma omp parallel for num_threads(NCORES)
   for (int i = 0; i < mParticles.size(); i++) {
     mParticles[i].mPressureForce =
         calcPressureForce(i, mParticles[i].mDensity, mParticles[i].mPressure,
@@ -181,7 +181,7 @@ void Fluid::simulate_omp(void) {
   }
 
 // Compute external forces
-#pragma omp parallel for
+  #pragma omp parallel for num_threads(NCORES)
   for (int i = 0; i < mParticles.size(); i++) {
     mParticles[i].mGravitationalForce =
         calcGravitationalForce(mParticles[i].mDensity);
@@ -197,7 +197,7 @@ void Fluid::simulate_omp(void) {
   static float time = 0.0f;
   time += TIME_STEP;
   Vector3f totalForce;
-#pragma omp parallel for
+  #pragma omp parallel for num_threads(NCORES)
   for (int i = 0; i < mParticles.size(); i++) {
     totalForce = mParticles[i].mPressureForce + mParticles[i].mViscosityForce +
                  mParticles[i].mGravitationalForce +

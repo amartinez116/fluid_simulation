@@ -29,7 +29,7 @@ public:
     void draw( void );
 
     void simulate_seq( void );
-    void simulate_omp( void );
+    void simulate_omp( int );
     void simulate_cuda( void );
 
     float calcDensity( Vector3f );
